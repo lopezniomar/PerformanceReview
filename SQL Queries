@@ -92,7 +92,8 @@ with newsalarybudget as
 select distinct department, newsalarybudget
 from newsalarybudget;
 
--- Here we're joing our current salary budget with our new salary budget by department. Then I will use a CTE to calculate the budget difference and percentage increase by department.
+-- Here we're joing our current salary budget with our new salary budget by department. Then I will use a CTE to calculate the budget difference 
+and percentage increase by department.
 
 select csb.department, csb.salarybudget, nsb.newsalarybudget
 from currentsalarybudget csb
@@ -125,7 +126,9 @@ from departmentalBudgetIncrease
 select currentCompanyBudget, newCompanyBudget, (newCompanyBudget-currentCompanyBudget) as budgetDifference, ((newCompanyBudget-currentCompanyBudget)/currentCompanyBudget)*100 as percentageIncrease
 from companyBudget;
 
---The company wants to make sure that noone is being discriminated against based on their race, age, or gender. Using a CTE, I'm going to get the average score received based on race, age, and gender, respectively, in order to see if there are any trends that favor one group of employees over the other.
+--The company wants to make sure that noone is being discriminated against based on their race, age, or gender. 
+--Using a CTE, I'm going to get the average score received based on race, age, and gender, respectively, in order to see if there are any trends that 
+--favor one group of employees over the other.
 
 select ed.race, ns.reviewscore, avg(ns.reviewscore) over (partition by ed.race) as avgScore
 from NewSalary ns
@@ -174,7 +177,9 @@ Order by DOB
 
 --Now that I have each employee's age, I again used a CTE so that I can calculate the average performance review score based off of age.
 
---After I created the CTE, I noticed that my querie was returning the average score per age AND [reviewscore]. I knew that if I wanted to isolate the age and their average score, I had to eliminate the reviewscore column. So I decided to create a view with my "dirty" data so that I could select off of that view with a DISTINCT function in order to select the age and their average scores.
+--After I created the CTE, I noticed that my querie was returning the average score per age AND [reviewscore]. 
+--I knew that if I wanted to isolate the age and their average score, I had to eliminate the reviewscore column. 
+--So I decided to create a view with my "dirty" data so that I could select off of that view with a DISTINCT function in order to select the age and their average scores.
 
 --Create View dirtyScoreByAge as
 with scoreByAge as
