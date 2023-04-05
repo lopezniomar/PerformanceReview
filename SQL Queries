@@ -1,0 +1,196 @@
+-- Calculating employee's new salary based off their Yearly Performance Review Scores.
+
+select employeeID, attendance, performance, knowledge, initiative, quality, 
+(attendance+performance+knowledge+initiative+quality)/5 as reviewscore
+from employeereviews
+group by employeeID, attendance, performance, knowledge, initiative, quality;
+
+--Create View NewSalary as
+with finalscore as
+(
+	select employeeID, attendance, performance, knowledge, initiative, quality,
+	(attendance+performance+knowledge+initiative+quality)/5 as reviewscore
+	from employeereviews
+	group by employeeID, attendance, performance, knowledge, initiative, quality
+)
+select fs.employeeID, ed.department, ed.salary, fs.reviewscore,
+	CASE
+		When fs.reviewscore >= 4.5 Then (ed.salary*1.05)
+		When fs.reviewscore >= 4 Then (ed.salary*1.0425)
+		When fs.reviewscore >= 3 Then (ed.salary*1.04)
+		When fs.reviewscore >= 2.5 Then (ed.salary*1.023)
+		When fs.reviewscore >= 1.8 Then (ed.salary*1.0125)
+		ELSE (ed.salary*1.007)
+	END as newsalary
+from finalscore fs
+join employeedemographics ed
+on fs.employeeID = ed.employeeID
+order by reviewscore desc;
+
+-- Calculating how many employees received what score based off of their departments
+
+select distinct department, reviewscore,
+	Case
+		when reviewscore >=4 Then '4-5'
+		when reviewscore >=3 Then '3-4'
+		when reviewscore >=2 Then '2-3'
+		when reviewscore >=1 Then '1-2'
+		Else '0-1'
+	END as scorerange
+from NewSalary
+Order by department, reviewscore desc;
+
+
+with scoreRangeCount as
+(
+	select distinct department, reviewscore,
+		Case
+			when reviewscore >=4 Then '4-5'
+			when reviewscore >=3 Then '3-4'
+			when reviewscore >=2 Then '2-3'
+			when reviewscore >=1 Then '1-2'
+			Else '0-1'
+		END as scorerange
+	from NewSalary
+)
+select distinct department, scorerange, count(scorerange) over (partition by scorerange, department) as countofEmployees
+from scoreRangeCount
+Order by department, scorerange desc;
+
+-- Calculating how much each department's salary budget is increasing this year
+
+select department, salary, sum(salary) over (partition by department)
+from employeedemographics
+group by department, salary
+order by department
+
+-- Then, I used the previous query in a CTE in order to calculate and isolate our current salary budget before the Performance Review
+
+--Create view currentsalarybudget as
+with currentsalarybudget as
+(
+	select department, salary, sum(salary) over (partition by department) as salarybudget
+	from employeedemographics
+	group by department, salary
+)
+select distinct department, salarybudget
+from currentsalarybudget;
+
+-- Here we're using a CTE to calculate and isolate our new salary budget after the Perfomance Review
+
+select department, newsalary, sum(newsalary) over (partition by department) as newsalarybudget
+from NewSalary
+group by department, newsalary;
+
+--Create view newslarybudget as
+with newsalarybudget as
+(
+	select department, newsalary, sum(newsalary) over (partition by department) as newsalarybudget
+	from NewSalary
+	group by department, newsalary
+)
+select distinct department, newsalarybudget
+from newsalarybudget;
+
+-- Here we're joing our current salary budget with our new salary budget by department. Then I will use a CTE to calculate the budget difference and percentage increase by department.
+
+select csb.department, csb.salarybudget, nsb.newsalarybudget
+from currentsalarybudget csb
+join newslarybudget nsb
+	on csb.department = nsb.department
+
+--Create View departmentalBudgetIncrease as
+with budgetstats as
+(
+	select csb.department, csb.salarybudget, nsb.newsalarybudget
+	from currentsalarybudget csb
+	join newslarybudget nsb
+		on csb.department = nsb.department
+)
+select department, salarybudget, newsalarybudget, (newsalarybudget-salarybudget) as salaryDifference, ((newsalarybudget-salarybudget)/salarybudget)*100 as percentageIncrease
+from budgetstats
+Order by department;
+
+-- Here we're calculating the budget difference and percentage increase for the whole company.
+
+select sum(salarybudget) currentCompanyBudget, sum(newsalarybudget) newCompanyBudget
+from departmentalBudgetIncrease;
+
+--Create View companyBudgetIncrease as
+with companyBudget as
+(
+select sum(salarybudget) currentCompanyBudget, sum(newsalarybudget) newCompanyBudget
+from departmentalBudgetIncrease
+)
+select currentCompanyBudget, newCompanyBudget, (newCompanyBudget-currentCompanyBudget) as budgetDifference, ((newCompanyBudget-currentCompanyBudget)/currentCompanyBudget)*100 as percentageIncrease
+from companyBudget;
+
+--The company wants to make sure that noone is being discriminated against based on their race, age, or gender. Using a CTE, I'm going to get the average score received based on race, age, and gender, respectively, in order to see if there are any trends that favor one group of employees over the other.
+
+select ed.race, ns.reviewscore, avg(ns.reviewscore) over (partition by ed.race) as avgScore
+from NewSalary ns
+Join employeedemographics ed
+on ns.employeeID = ed.employeeID
+group by ed.race, ns.reviewscore
+order by ed.race;
+
+--Here we're viewing the average performace scores based on Race 
+
+--Create View scoreByRace as
+with scoreByRace as
+(
+	select ed.race, ns.reviewscore, avg(ns.reviewscore) over (partition by ed.race) as avgScore
+	from NewSalary ns
+	Join employeedemographics ed
+	on ns.employeeID = ed.employeeID
+	group by ed.race, ns.reviewscore
+)
+select distinct race, avgScore 
+from scoreByRace
+order by race;
+
+--Here we're viewing the average performace scores based on Gender 
+
+--Create View scoreByGender as
+with scoreByGender as
+(
+	select ed.gender, ns.reviewscore, avg(ns.reviewscore) over (partition by ed.gender) as avgScore
+	from NewSalary ns
+	Join employeedemographics ed
+	on ns.employeeID = ed.employeeID
+	group by ed.gender, ns.reviewscore
+)
+select distinct gender, avgScore 
+from scoreByGender
+order by gender;
+
+-- First I used the 'DATEDIFF' function to calculate each employee's age.
+
+select DATEDIFF (year, (cast(ed.DOB as date)), '2023-04-03') as age, ns.reviewscore
+from employeedemographics ed
+Join NewSalary ns
+on ed.employeeID = ns.employeeID
+Order by DOB
+
+--Now that I have each employee's age, I again used a CTE so that I can calculate the average performance review score based off of age.
+
+--After I created the CTE, I noticed that my querie was returning the average score per age AND [reviewscore]. I knew that if I wanted to isolate the age and their average score, I had to eliminate the reviewscore column. So I decided to create a view with my "dirty" data so that I could select off of that view with a DISTINCT function in order to select the age and their average scores.
+
+--Create View dirtyScoreByAge as
+with scoreByAge as
+(
+	select DATEDIFF (year, (cast(ed.DOB as date)), '2023-04-03') as age, ns.reviewscore
+	from employeedemographics ed
+	Join NewSalary ns
+	on ed.employeeID = ns.employeeID
+)
+select age, reviewscore, avg(reviewscore) over (partition by age) as scoreByAge
+from scoreByAge
+order by age;
+
+-- Here I'm creating a new view with my "cleaned" data with the age and average score of employees. 
+
+--Create view scoreByAge as
+select distinct age, scoreByAge
+from dirtyScoreByAge
+order by age;
